@@ -1,13 +1,22 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Azure Vision Analyzer</title>
-</head>
+<head><title>Azure Vision Demo</title></head>
 <body>
-    <h1>Upload an Image for Analysis</h1>
-    <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required>
-        <button type="submit">Analyze</button>
-    </form>
+  <h1>Upload an image</h1>
+  <input type="file" id="fileInput">
+  <button onclick="upload()">Analyze</button>
+  <pre id="result"></pre>
+
+  <script>
+    async function upload() {
+      const file = document.getElementById("fileInput").files[0];
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/analyze", { method: "POST", body: formData });
+      const json = await res.json();
+      document.getElementById("result").textContent = JSON.stringify(json, null, 2);
+    }
+  </script>
 </body>
 </html>
