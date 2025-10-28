@@ -1,96 +1,43 @@
 import os
-from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS
 import requests
+from flask import Flask, render_template, request, jsonify
 
-# Flask setup
-app = Flask(__name__, static_folder="static", template_folder="templates")
-CORS(app)  # لو التطبيق والواجهة على نفس الدومين، ممكن الاستغناء عنه
+app = Flask(__name__)
 
-# ===== Azure config (من متغيرات البيئة) =====
-AZURE_ENDPOINT = os.getenv("https://test-tow.cognitiveservices.azure.com/")  # مثال: https://<name>.cognitiveservices.azure.com/vision/v3.2/analyze
-AZURE_KEY = os.getenv("4KJp3PoA5yecqFkJTewSkr5OysHfdODVpjMog3Me5Wp1Dp3A0uYYJQQJ99BJACPV0roXJ3w3AAAFACOGLbtF")            # Key1 أو Key2 من Manage Keys
+VISION_ENDPOINT = os.getenv("https://asdaasdasdads.cognitiveservices.azure.com/")
+VISION_KEY = os.getenv("74zfy9oNEFghoq9YhWvdkz4P73G2fC9t3tfMqgqndVvwUhu7TX1MJQQJ99BJAC5T7U2XJ3w3AAAFACOGLsqX")
 
-# تحقق مبكر من الإعدادات
-if not AZURE_ENDPOINT or not AZURE_KEY:
-    print("⚠️  AZURE_ENDPOINT / AZURE_KEY غير مضبوطين في متغيرات البيئة. "
-          "اضبطهم من Azure → Web App → Configuration → Application settings.")
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        if "image" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-# ===== قيود رفع الملفات =====
-app.config["MAX_CONTENT_LENGTH"] = 6 * 1024 * 1024  # 6MB
-ALLOWED_EXT = {"jpg", "jpeg", "png", "bmp", "gif", "webp"}
+        file = request.files["image"]
+        if file.filename == "":
+            return jsonify({"error": "Empty filename"}), 400
 
-
-def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
-
-
-# ===== Routes =====
-@app.route("/")
-def home():
-    # صفحة الواجهة (templates/index.html)
-    return render_template("index.html")
-
-
-@app.route("/healthz")
-def healthz():
-    # مسار فحص صحي بسيط لأغراض Azure / المراقبة
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route("/analyze", methods=["POST"])
-def analyze_image():
-    # 1) التحقق من الملف
-    file = request.files.get("image")
-    if not file:
-        return jsonify({"error": "No image uploaded"}), 400
-
-    if not allowed_file(file.filename):
-        return jsonify({"error": "Unsupported file type"}), 415
-
-    if not AZURE_ENDPOINT or not AZURE_KEY:
-        return jsonify({"error": "Server misconfigured: missing AZURE_ENDPOINT or AZURE_KEY"}), 500
-
-    image_bytes = file.read()
-
-    # 2) طلب Azure
-    headers = {
-        "Ocp-Apim-Subscription-Key": AZURE_KEY,
-        "Content-Type": "application/octet-stream",
-    }
-    params = {
-        # v3.2 features: Categories, Tags, Description, Faces, ImageType, Color, Adult, Objects, Brands
-        "visualFeatures": "Description,Tags,Objects",
-        "language": "en",
-    }
-
-    try:
-        resp = requests.post(
-            AZURE_ENDPOINT,
+        # Call Azure Vision API
+        analyze_url = f"{VISION_ENDPOINT}/vision/v3.2/analyze"
+        headers = {
+            "Ocp-Apim-Subscription-Key": VISION_KEY,
+            "Content-Type": "application/octet-stream"
+        }
+        params = {"visualFeatures": "Categories,Description,Objects,Tags"}
+        response = requests.post(
+            analyze_url,
             headers=headers,
             params=params,
-            data=image_bytes,
-            timeout=30
+            data=file.read()
         )
 
-        # 3) معالجة الاستجابة
-        if not resp.ok:
-            # نعيد النص الخام لمساعدة الديبَغ (مثلاً 401/404/415/429)
-            return jsonify({
-                "error": "Azure API error",
-                "status": resp.status_code,
-                "details": resp.text
-            }), resp.status_code
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": response.text}), response.status_code
 
-        return jsonify(resp.json())
+    return render_template("index.html")
 
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": "Request to Azure failed", "details": str(e)}), 502
-
-
-# ===== تشغيل محلي/على Azure =====
 if __name__ == "__main__":
-    # Azure App Service يمرر المنفذ عبر PORT
-    port = int(os.environ.get("PORT", 5000))
-    # host=0.0.0.0 مهم على Azure/حاويات
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=8000, debug=False)
+
